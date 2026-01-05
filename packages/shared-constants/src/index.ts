@@ -53,3 +53,8 @@ export const AI_ACTIONS = {
     description: 'Continue from where you left off',
   },
 } as const;
+
+// Sync constants
+export const SYNC_INTERVAL = 30000; // 30 seconds
+export const SYNC_RETRY_DELAY = 5000; // 5 seconds
+export const MAX_SYNC_RETRIES = 3;

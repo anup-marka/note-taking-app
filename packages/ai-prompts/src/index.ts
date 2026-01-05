@@ -1,4 +1,4 @@
-import type { AIAction } from '@/types/ai';
+import type { AIAction } from '@note-app/shared-types';
 
 export const SYSTEM_PROMPTS: Record<AIAction, string> = {
   improve: `You are a skilled writing assistant. Improve the given text while preserving its meaning and voice. Focus on clarity, conciseness, and flow. Return only the improved text without explanations or quotes.`,
