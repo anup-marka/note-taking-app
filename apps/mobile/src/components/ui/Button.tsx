@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -7,6 +7,7 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
+import { haptics } from '../../lib/haptics';
 
 interface ButtonProps {
   title: string;
@@ -33,6 +34,15 @@ export default function Button({
 }: ButtonProps) {
   const isDisabled = disabled || loading;
 
+  const handlePress = useCallback(() => {
+    if (variant === 'danger') {
+      haptics.warning();
+    } else {
+      haptics.medium();
+    }
+    onPress();
+  }, [variant, onPress]);
+
   return (
     <TouchableOpacity
       style={[
@@ -43,7 +53,7 @@ export default function Button({
         isDisabled && styles.disabled,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       activeOpacity={0.7}
     >

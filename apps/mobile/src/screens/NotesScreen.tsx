@@ -1,20 +1,22 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { formatRelativeTime, truncate } from '@note-app/shared-utils';
 import type { Note } from '@note-app/shared-types';
 import type { RootStackParamList } from '../navigation';
 import { useNotes, useNoteActions } from '../hooks/use-notes';
 import { useNotesStore } from '../stores/notes-store';
+import { useSync } from '../hooks/use-sync';
+import { NoteCard } from '../components/notes';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -66,6 +68,7 @@ export default function NotesScreen() {
   const { notes, pinnedNotes, unpinnedNotes, isLoading } = useNotes();
   const { togglePinNote, trashNote } = useNoteActions();
   const setNotes = useNotesStore((state) => state.setNotes);
+  const { initialSync } = useSync();
   const [refreshing, setRefreshing] = React.useState(false);
 
   // Initialize demo data on first load
@@ -75,79 +78,77 @@ export default function NotesScreen() {
     }
   }, []);
 
-  const handleCreateNote = () => {
+  const handleCreateNote = useCallback(() => {
     navigation.navigate('NoteEditor', {});
-  };
+  }, [navigation]);
 
-  const handleOpenNote = (noteId: string) => {
+  const handleOpenNote = useCallback((noteId: string) => {
     navigation.navigate('NoteEditor', { noteId });
-  };
+  }, [navigation]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // TODO: Sync notes from server
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await initialSync();
     setRefreshing(false);
-  };
+  }, [initialSync]);
 
-  const renderNoteCard = ({ item }: { item: Note }) => (
-    <TouchableOpacity
-      style={styles.noteCard}
-      onPress={() => handleOpenNote(item.id)}
-      onLongPress={() => {
-        // TODO: Show action sheet
-      }}
-    >
-      <View style={styles.noteHeader}>
-        <Text style={styles.noteTitle} numberOfLines={1}>
-          {item.title || 'Untitled'}
-        </Text>
-        {item.isPinned && <Text style={styles.pinIndicator}>📌</Text>}
-      </View>
-      <Text style={styles.notePreview} numberOfLines={2}>
-        {truncate(item.plainText, 150)}
-      </Text>
-      <View style={styles.noteMeta}>
-        <View style={styles.tagsContainer}>
-          {item.tags.slice(0, 2).map((tag) => (
-            <View key={tag} style={styles.tag}>
-              <Text style={styles.tagText}>{tag}</Text>
-            </View>
-          ))}
-          {item.tags.length > 2 && (
-            <Text style={styles.moreTagsText}>+{item.tags.length - 2}</Text>
-          )}
-        </View>
-        <Text style={styles.dateText}>
-          {formatRelativeTime(new Date(item.updatedAt))}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const handleNoteLongPress = useCallback((note: Note) => {
+    Alert.alert(
+      note.title || 'Untitled',
+      'Choose an action',
+      [
+        {
+          text: note.isPinned ? 'Unpin' : 'Pin',
+          onPress: () => togglePinNote(note.id, !note.isPinned),
+        },
+        {
+          text: 'Move to Trash',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Delete Note',
+              'Are you sure you want to move this note to trash?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: () => trashNote(note.id),
+                },
+              ]
+            );
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [togglePinNote, trashNote]);
 
-  const ListHeader = () => (
-    <>
-      {pinnedNotes.length > 0 && (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Pinned</Text>
-        </View>
-      )}
-    </>
-  );
-
-  const SectionSeparator = () => {
-    if (pinnedNotes.length > 0 && unpinnedNotes.length > 0) {
-      return (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Notes</Text>
-        </View>
-      );
+  // Build sections for SectionList
+  const sections = React.useMemo(() => {
+    const result = [];
+    if (pinnedNotes.length > 0) {
+      result.push({ title: 'Pinned', data: pinnedNotes });
     }
-    return null;
-  };
+    if (unpinnedNotes.length > 0) {
+      result.push({ title: 'Notes', data: unpinnedNotes });
+    }
+    return result;
+  }, [pinnedNotes, unpinnedNotes]);
 
-  // Combine pinned and unpinned with section separators
-  const allNotes = [...pinnedNotes, ...unpinnedNotes];
+  const renderNoteCard = useCallback(({ item }: { item: Note }) => (
+    <NoteCard
+      note={item}
+      onPress={() => handleOpenNote(item.id)}
+      onLongPress={() => handleNoteLongPress(item)}
+    />
+  ), [handleOpenNote, handleNoteLongPress]);
+
+  const renderSectionHeader = useCallback(({ section }: { section: { title: string } }) => (
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>{section.title}</Text>
+    </View>
+  ), []);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -158,11 +159,13 @@ export default function NotesScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={allNotes}
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         renderItem={renderNoteCard}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -215,73 +218,19 @@ const styles = StyleSheet.create({
     fontWeight: '300',
   },
   listContent: {
-    padding: 16,
+    paddingBottom: 16,
   },
   sectionHeader: {
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 20,
+    marginTop: 8,
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#71717a',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  noteCard: {
-    backgroundColor: '#18181b',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-  },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  noteTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#fafafa',
-    flex: 1,
-  },
-  pinIndicator: {
-    marginLeft: 8,
-  },
-  notePreview: {
-    fontSize: 14,
-    color: '#a1a1aa',
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  noteMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tag: {
-    backgroundColor: '#27272a',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  tagText: {
-    fontSize: 12,
-    color: '#a1a1aa',
-  },
-  moreTagsText: {
-    fontSize: 12,
-    color: '#71717a',
-  },
-  dateText: {
-    fontSize: 12,
-    color: '#71717a',
   },
   emptyState: {
     flex: 1,

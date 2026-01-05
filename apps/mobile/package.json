@@ -24,6 +24,7 @@
     "@supabase/supabase-js": "^2.46.0",
     "date-fns": "^4.1.0",
     "expo": "~54.0.30",
+    "expo-haptics": "~14.0.1",
     "expo-secure-store": "~14.0.0",
     "expo-status-bar": "~3.0.9",
     "nanoid": "^5.1.6",
